@@ -5,7 +5,7 @@ import cv2 as cv
 class Slam:
     def __init__(self):
         self.orb = cv.ORB_create()
-        self.matcher = cv.BFMatcher(cv.NORM_HAMMING, crossCheck=True)
+        self.matcher = cv.BFMatcher(cv.NORM_HAMMING, crossCheck=False)
         self.last = None
 
     def process_frame(self, frame):
@@ -19,15 +19,26 @@ class Slam:
 
         # extracting
         kps, des = self.orb.compute(frame, kps)
-        self.last = { "kps": kps, "des": des }
 
         # matching
+        good = None
         if self.last is not None:
-            matches = bf.match(des, self.last['des'], k=2)
-
+            matches = self.matcher.knnMatch(des, self.last['des'], k=2)
+            good = []
+            for m, n in matches:
+                if m.distance < 0.75 * n.distance:
+                    good.append(m)
 
         # drawing
         out_frame = cv.drawKeypoints(frame, kps, None, color=(0, 255, 0))
+        if good is not None:
+            for m in good:
+                ptf2pt = lambda pt: (int(pt[0]), int(pt[1]))
+                out_frame = cv.line(out_frame, ptf2pt(kps[m.queryIdx].pt), ptf2pt(self.last['kps'][m.trainIdx].pt), (255,0,0), 1)
+
+        # updating last
+        self.last = { "kps": kps, "des": des }
+        
         return out_frame
 
 cap = cv.VideoCapture('road.mp4')
