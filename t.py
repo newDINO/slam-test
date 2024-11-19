@@ -21,20 +21,30 @@ class Slam:
         kps, des = self.orb.compute(frame, kps)
 
         # matching
-        good = None
+        good_matches = None
         if self.last is not None:
-            matches = self.matcher.knnMatch(des, self.last['des'], k=2)
-            good = []
+            matches = self.matcher.knnMatch(self.last['des'], des, k=2)
+            good_matches = []
             for m, n in matches:
                 if m.distance < 0.75 * n.distance:
-                    good.append(m)
+                    good_matches.append((
+                        self.last['kps'][m.queryIdx].pt,
+                        kps[m.trainIdx].pt
+                    ))
+            good_matches = np.array(good_matches)
+
+        # filtering
+        if good_matches is not None:
+            good_pt1, good_pt2 = good_matches.transpose([1, 0, 2])
+            M, mask = cv.findHomography(good_pt1, good_pt2, cv.RANSAC, 5.0)
+            matched_mask = mask.ravel().astype(bool)
+            good_matches = good_matches[matched_mask]
 
         # drawing
         out_frame = cv.drawKeypoints(frame, kps, None, color=(0, 255, 0))
-        if good is not None:
-            for m in good:
-                ptf2pt = lambda pt: (int(pt[0]), int(pt[1]))
-                out_frame = cv.line(out_frame, ptf2pt(kps[m.queryIdx].pt), ptf2pt(self.last['kps'][m.trainIdx].pt), (255,0,0), 1)
+        if good_matches is not None:
+            for pt1, pt2 in good_matches:
+                out_frame = cv.line(out_frame, pt1.astype(int), pt2.astype(int), (255, 0, 0))
 
         # updating last
         self.last = { "kps": kps, "des": des }
